@@ -4,41 +4,30 @@ using UnityEngine.Rendering;
 
 public class PlayerController : MonoBehaviour
 {
-    //References
-    private InputManager inputManager;
-    private Rigidbody2D _rb;
 
-    //Player Horizontal Movement Variables
-    [SerializeField] private float _maxWalkSpeed = 12f;
-    [SerializeField] private float _groundAcceleration = 7f;
-    [SerializeField] private float _groundDecceleration = 10f;
+    //References
+    [SerializeField] private InputManager _inputManager;
+    [SerializeField] private PlayerControllerValuesSO _playerControllerValues;
+    
+    private Rigidbody2D _rb;
 
     private Vector2 _moveVelocity;
 
-    //Jump Variables
-    [SerializeField] private float _maxJumpHeight = 4f;
-    [SerializeField] private float _maxJumpDistance = 2f;
-
     private bool _jumpWasPressed;
-    private float verticalVelocity;
+    private bool _jumpwasReleased;
 
-    public float Gravity { get; set; }
-    public float InitialJumpVelocity { get; set; }
+    private float verticalVelocity;
 
     //Ground Variables
 
     [SerializeField] private LayerMask _groundLayer;
     [SerializeField] private float _raylength;
     [SerializeField] private bool _isGrounded;
+    [SerializeField] private BoxCollider2D _boxCollider;
 
-    private void OnValidate()
-    {
-        CalculateValues();
-    }
     private void Start()
     {
         _rb = GetComponent<Rigidbody2D>();
-        inputManager = InputManager.Instance;
     }
 
     private void Update()
@@ -49,31 +38,42 @@ public class PlayerController : MonoBehaviour
     // Update is called once per frame
     void FixedUpdate()
     {
-        Move(inputManager.GetMoveInput());
+        if (_isGrounded)
+        {
+            Move(_inputManager.GetMoveInput(), _playerControllerValues.groundAcceleration, _playerControllerValues.groundDecceleration);
+        }
+        else
+        {
+            Move(_inputManager.GetMoveInput(), _playerControllerValues.airAcceleration, _playerControllerValues.airDeceleration);
+        }
         Jump();
     }
 
-    private void Move(Vector2 inputVector)
+    private void Move(Vector2 inputVector, float acceleration, float deceleration)
     {
         Vector2 targetVelocity = Vector2.zero;
 
         if (inputVector != Vector2.zero)
         {
-            targetVelocity = new Vector2(inputVector.x, 0f) * _maxWalkSpeed;
-            _moveVelocity = Vector2.Lerp(_moveVelocity, targetVelocity, _groundAcceleration * Time.fixedDeltaTime);
+            targetVelocity = new Vector2(inputVector.x, 0f) * _playerControllerValues.maxWalkSpeed;
+            _moveVelocity = Vector2.Lerp(_moveVelocity, targetVelocity, acceleration * Time.fixedDeltaTime);
             _rb.linearVelocity = new Vector2(_moveVelocity.x, _rb.linearVelocity.y);
         }
         else
         {
-            _moveVelocity = Vector2.Lerp(_moveVelocity, targetVelocity, _groundDecceleration * Time.fixedDeltaTime);
+            _moveVelocity = Vector2.Lerp(_moveVelocity, targetVelocity, deceleration * Time.fixedDeltaTime);
             _rb.linearVelocity = new Vector2(_moveVelocity.x, _rb.linearVelocity.y);
         }
     }
     private void JumpCheck()
     {
-        if (inputManager.JumpWasPressed() && _isGrounded)
+        if (_inputManager.JumpWasPressed() && _isGrounded)
         {
             _jumpWasPressed = true;
+        }
+        if (_inputManager.JumpWasReleased())
+        {
+            _jumpwasReleased = true;
         }
     }
 
@@ -81,26 +81,37 @@ public class PlayerController : MonoBehaviour
     {
         if (_jumpWasPressed)
         {
-            verticalVelocity = InitialJumpVelocity;
+            verticalVelocity = _playerControllerValues.InitialJumpVelocity;
             _jumpWasPressed = false;
         }
         else
         {
             if (_isGrounded)
             {
-                verticalVelocity = 0f;
+                verticalVelocity = -0.1f;
             }
             else
             {
-                verticalVelocity += Gravity * Time.fixedDeltaTime;
+                if (_jumpwasReleased && verticalVelocity > 0f)
+                {
+                    verticalVelocity = verticalVelocity / 2;
+                }
+                if(verticalVelocity <= 0f)
+                {
+                    verticalVelocity += (_playerControllerValues.Gravity * _playerControllerValues.fallGravityMultiplaier) * Time.fixedDeltaTime;
+                }
+                else
+                {
+                    verticalVelocity += _playerControllerValues.Gravity * Time.fixedDeltaTime;
+                }
             }
         }
         _rb.linearVelocity = new Vector2(_rb.linearVelocityX, verticalVelocity);
+        _jumpwasReleased = false;
     }
-
     private void IsGrounded()
     {
-        if (Physics2D.Raycast(transform.position, Vector2.down, _raylength, _groundLayer))
+        if (Physics2D.BoxCast(transform.position, _boxCollider.size , 0f, Vector2.down, _raylength, _groundLayer))
         {
             _isGrounded = true;
         }
@@ -108,12 +119,6 @@ public class PlayerController : MonoBehaviour
         {
             _isGrounded = false;
         }
-    }
-    
-    private void CalculateValues()
-    {
-        InitialJumpVelocity = (2 * _maxJumpHeight * _maxWalkSpeed) / _maxJumpDistance;
-        Gravity = -(2 * _maxJumpHeight * Mathf.Pow(_maxWalkSpeed, 2) / Mathf.Pow(_maxJumpDistance, 2));
     }
     
 }
